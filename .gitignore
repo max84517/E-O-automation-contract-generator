@@ -10,7 +10,8 @@ poetry.lock
 # PyInstaller
 dist/
 build/
-*.spec
+# *.spec is tracked — only ignore auto-generated ones if needed
+# EO_Contract_Generator.spec is committed intentionally
 
 # Data, templates & output — NOT tracked in git
 data/*.xlsx
