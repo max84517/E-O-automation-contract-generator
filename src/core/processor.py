@@ -48,8 +48,18 @@ class DataProcessor:
         # Include Info.GBU temporarily for the split; remove it from final output.
         extra = ["GBU"] if "GBU" in self.info.columns else []
         info_work = self.info[keep_cols + extra].copy()
-        # Normalised key for case-insensitive supplier matching
+
+        # ── Normalise all string data columns in Info (strip whitespace) ──
+        for col in keep_cols:
+            if info_work[col].dtype == object:
+                info_work[col] = info_work[col].str.strip()
+
+        # Normalised join keys (case-insensitive, no surrounding whitespace)
         info_work["_supp_norm"] = info_work["Supplier"].str.strip().str.lower()
+        if extra:
+            info_work["_gbu_norm_info"] = (
+                info_work["GBU"].astype(str).str.strip().str.upper()
+            )
 
         # ── Suppliers that have GBU-differentiated rows in Info ─────────
         if extra:
@@ -70,6 +80,10 @@ class DataProcessor:
         # Normalize Summary GBU → last 2 chars upper (cNB→NB, bDT→DT)
         # Also normalize GTK Supplier for case-insensitive join
         summary_work = self.summary.copy()
+        # Strip whitespace from all Summary string columns
+        for col in summary_work.columns:
+            if summary_work[col].dtype == object:
+                summary_work[col] = summary_work[col].str.strip()
         summary_work["_gbu_norm"] = (
             summary_work["GBU"].astype(str).str.strip().str[-2:].str.upper()
         )
@@ -86,11 +100,11 @@ class DataProcessor:
             ].copy()
             m1 = pd.merge(
                 s_specific,
-                info_has_gbu.rename(columns={"GBU": "_info_gbu"}),
+                info_has_gbu.rename(columns={"_gbu_norm_info": "_info_gbu"}),
                 left_on=["_supp_norm", "_gbu_norm"],
                 right_on=["_supp_norm", "_info_gbu"],
                 how="left",
-            ).drop(columns=["_info_gbu"], errors="ignore")
+            ).drop(columns=["_info_gbu", "GBU"], errors="ignore")
             results.append(m1)
 
         # ── Group 2: all other suppliers ────────────────────────────────
@@ -106,7 +120,7 @@ class DataProcessor:
         results.append(m2)
 
         self._merged = pd.concat(results, ignore_index=True).drop(
-            columns=["_gbu_norm", "_supp_norm"], errors="ignore"
+            columns=["_gbu_norm", "_supp_norm", "_gbu_norm_info", "GBU_y"], errors="ignore"
         )
         return self
 
