@@ -12,16 +12,10 @@ dist/
 build/
 *.spec
 
-# Data & output (user-supplied, not tracked)
+# Data, templates & output — NOT tracked in git
 data/*.xlsx
+template/*.docx
 output/*.docx
-
-# Temp debug scripts
-inspect_excel.py
-inspect2.py
-smoke_test.py
-check_loader.py
-check_scale.py
 
 # OS
 .DS_Store
