@@ -352,13 +352,13 @@ class App(ctk.CTk):
         done:    list[dict] = []
 
         for record in self._processor.records:
-            fname = _output_filename(record)
-            if fname in existing:
-                done.append(record)
-            elif _record_is_valid(record):
-                pending.append(record)
-            else:
+            if not _record_is_valid(record):
+                # Missing data always goes to Missing — even if a same-named file exists
                 missing.append(record)
+            elif _output_filename(record) in existing:
+                done.append(record)
+            else:
+                pending.append(record)
 
         # ── Render groups ───────────────────────────────────────────────
         groups = [
