@@ -32,26 +32,75 @@ class DataProcessor:
 
     # ------------------------------------------------------------------
     def process(self) -> "DataProcessor":
-        """Left-join Summary → Info on GTK Supplier = Supplier.
+        """Merge Summary → Info with GBU-aware Signer selection.
 
-        Info is keyed by Supplier (one row per supplier regardless of
-        platform).  Only the contract-metadata columns are kept from
-        Info to avoid column-name collisions (GBU, Sub-Category, ODM
-        appear in both sheets).
+        Most suppliers have one Info row  → join on GTK Supplier only.
+        Suppliers with multiple Info rows differentiated by GBU (e.g. Chicony NB / DT)
+        → join on (GTK Supplier, GBU suffix).
+
+        Summary.GBU looks like 'cNB', 'bDT' etc.
+        Info.GBU looks like 'NB', 'DT' (or NaN for single-Signer suppliers).
+        We normalize Summary.GBU to the last 2 chars for comparison.
         """
-        available = [c for c in self._INFO_KEEP if c in self.info.columns]
-        info_slim = (
-            self.info[available]
-            .copy()
-            .drop_duplicates(subset=["Supplier"], keep="first")
+        keep_cols = [c for c in self._INFO_KEEP if c in self.info.columns]
+
+        # Include Info.GBU temporarily for the split; remove it from final output.
+        extra = ["GBU"] if "GBU" in self.info.columns else []
+        info_work = self.info[keep_cols + extra].copy()
+
+        # ── Suppliers that have GBU-differentiated rows in Info ─────────
+        if extra:
+            info_has_gbu = info_work[info_work["GBU"].notna()].copy()
+            specific_suppliers: set[str] = set(info_has_gbu["Supplier"].unique())
+        else:
+            info_has_gbu = pd.DataFrame()
+            specific_suppliers = set()
+
+        # ── All other suppliers: one Info row per Supplier ───────────────
+        info_nogbu = (
+            info_work[info_work["GBU"].isna()][keep_cols]
+            if extra
+            else info_work[keep_cols].copy()
+        )
+        info_nogbu = info_nogbu.drop_duplicates(subset=["Supplier"], keep="first")
+
+        # Normalize Summary GBU → last 2 chars upper (cNB→NB, bDT→DT)
+        summary_work = self.summary.copy()
+        summary_work["_gbu_norm"] = (
+            summary_work["GBU"].astype(str).str.strip().str[-2:].str.upper()
         )
 
-        self._merged = pd.merge(
-            self.summary,
-            info_slim,
+        results = []
+
+        # ── Group 1: GBU-specific suppliers (e.g. Chicony) ──────────────
+        if specific_suppliers:
+            s_specific = summary_work[
+                summary_work["GTK Supplier"].isin(specific_suppliers)
+            ].copy()
+            m1 = pd.merge(
+                s_specific,
+                info_has_gbu.rename(columns={"GBU": "_info_gbu"}),
+                left_on=["GTK Supplier", "_gbu_norm"],
+                right_on=["Supplier", "_info_gbu"],
+                how="left",
+            ).drop(columns=["_info_gbu"], errors="ignore")
+            results.append(m1)
+
+        # ── Group 2: all other suppliers ────────────────────────────────
+        s_others = summary_work[
+            ~summary_work["GTK Supplier"].isin(specific_suppliers)
+        ]
+        m2 = pd.merge(
+            s_others,
+            info_nogbu,
             left_on=["GTK Supplier"],
             right_on=["Supplier"],
             how="left",
+        )
+        results.append(m2)
+
+        self._merged = pd.concat(results, ignore_index=True).drop(
+            columns=["_gbu_norm"], errors="ignore"
         )
         return self
 
@@ -78,16 +127,25 @@ class DataProcessor:
 
     @staticmethod
     def format_date(value) -> str:
-        """Return 'Month DD, YYYY', e.g. 'January 01, 2025'."""
-        if isinstance(value, (datetime, date)):
-            return value.strftime("%B %d, %Y")
+        """Return 'Month DD, YYYY', e.g. 'January 01, 2025'.
+        Returns empty string for NaT, None, or unparseable values.
+        """
+        # pandas NaT passes isinstance(datetime) but raises on strftime
+        import pandas as pd
+        if value is None or value is pd.NaT:
+            return ""
+        try:
+            if isinstance(value, (datetime, date)):
+                return value.strftime("%B %d, %Y")
+        except (ValueError, TypeError, AttributeError):
+            pass
         if isinstance(value, str):
             for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%d/%m/%Y"):
                 try:
                     return datetime.strptime(value, fmt).strftime("%B %d, %Y")
                 except ValueError:
                     continue
-        return str(value)
+        return ""
 
     @staticmethod
     def amount_to_words(amount) -> str:

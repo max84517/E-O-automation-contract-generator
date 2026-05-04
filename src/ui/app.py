@@ -35,14 +35,16 @@ ctk.set_default_color_theme("blue")
 _COL_SUPPLIER = "GTK Supplier"
 _COL_PLATFORM = "Platform"
 _COL_PAYMENT  = "Actual Payment"
+_COL_EFF_DATE = "Effective Date"
 
 # (header_label, pixel_width) – kept in sync with column layout below
 _COLUMNS: list[tuple[str, int]] = [
-    ("",              44),
-    ("GTK Supplier", 210),
-    ("Platform",     160),
-    ("Actual Payment", 130),
-    ("Status",       120),
+    ("",               44),
+    ("GTK Supplier",  200),
+    ("Platform",      150),
+    ("Actual Payment", 120),
+    ("Effective Date", 130),
+    ("Status",        120),
 ]
 
 # Dark-mode palette (approx. CTkScrollableFrame dark bg)
@@ -68,20 +70,48 @@ def _output_filename(record: dict) -> str:
     return f"Settlement Form_{s} {p}.docx"
 
 
+# All 9 Word placeholder sources that must be present to generate a contract.
+_REQUIRED_FIELDS: list[tuple[str, str]] = [
+    (_COL_SUPPLIER,  "GTK Supplier"),
+    (_COL_PLATFORM,  "Platform"),
+    (_COL_PAYMENT,   "Actual Payment"),
+    (_COL_EFF_DATE,  "Effective Date"),
+    ("Master Agreement", "Master Agreement"),
+    ("Supplier name",    "Supplier name"),
+    ("Sub-Category",     "Sub-Category"),
+    ("Signer",           "Signer"),
+    ("Signer title",     "Signer title"),
+]
+
+
+def _get_missing_fields(record: dict) -> list[str]:
+    """Return display names of required fields that are empty / NaN."""
+    missing: list[str] = []
+    for col, label in _REQUIRED_FIELDS:
+        raw = record.get(col)
+        # Numeric check (Actual Payment)
+        if col == _COL_PAYMENT:
+            try:
+                f = float(raw)   # type: ignore[arg-type]
+                if f != f:       # NaN
+                    missing.append(label)
+            except (TypeError, ValueError):
+                missing.append(label)
+            continue
+        # Date check (Effective Date)
+        if col == _COL_EFF_DATE:
+            if not DataProcessor.format_date(raw):
+                missing.append(label)
+            continue
+        # String fields
+        v = str(raw).strip() if raw is not None else ""
+        if not v or v.lower() in ("nan", "nat", "none"):
+            missing.append(label)
+    return missing
+
+
 def _record_is_valid(record: dict) -> bool:
-    """Return True only when Supplier, Platform, and Actual Payment are all present."""
-    for col in (_COL_SUPPLIER, _COL_PLATFORM):
-        v = str(record.get(col, "")).strip()
-        if not v or v.lower() == "nan":
-            return False
-    pay = record.get(_COL_PAYMENT)
-    if pay is None:
-        return False
-    try:
-        f = float(pay)
-        return f == f   # False for NaN
-    except (TypeError, ValueError):
-        return False
+    return len(_get_missing_fields(record)) == 0
 
 
 def _existing_docx_names() -> set[str]:
@@ -121,8 +151,8 @@ class App(ctk.CTk):
     def __init__(self) -> None:
         super().__init__()
         self.title("E&O Settlement Contract Generator")
-        self.geometry("860x680")
-        self.minsize(700, 500)
+        self.geometry("1000x680")
+        self.minsize(800, 500)
 
         self._processor: DataProcessor | None = None
         self._writer = WordWriter()
@@ -329,29 +359,30 @@ class App(ctk.CTk):
                 row.pack(fill="x", padx=2, pady=1)
                 self._scroll_widgets.append(row)
 
-                # Checkbox — plain tk widget, no CTk scaling needed
-                tk.Checkbutton(
+                # Checkbox — CTkCheckBox so CTk scales it identically to the header
+                ctk.CTkCheckBox(
                     row,
+                    text="",
                     variable=var,
-                    bg=row_bg,
-                    activebackground=row_bg,
-                    selectcolor=_CHK_SELECT,
-                    bd=0,
-                    highlightthickness=0,
+                    width=_COLUMNS[0][1],
+                    checkbox_width=20,
+                    checkbox_height=20,
                     state="normal" if is_valid else "disabled",
-                    cursor="hand2" if is_valid else "arrow",
-                ).pack(side="left", padx=(12, 0), pady=4)
+                    fg_color=_CHK_SELECT,
+                ).pack(side="left", padx=(8, 0), pady=4)
 
-                sup     = str(record.get(_COL_SUPPLIER, "")).strip()
-                plat    = str(record.get(_COL_PLATFORM, "")).strip()
-                pay_str = DataProcessor.format_amount(record.get(_COL_PAYMENT))
+                sup      = str(record.get(_COL_SUPPLIER, "")).strip()
+                plat     = str(record.get(_COL_PLATFORM, "")).strip()
+                pay_str  = DataProcessor.format_amount(record.get(_COL_PAYMENT))
+                eff_date = DataProcessor.format_date(record.get(_COL_EFF_DATE, ""))
                 text_color = _FG_NORMAL if is_valid else _FG_DIM
 
                 # CTkLabel handles DPI scaling automatically — identical to the header.
                 for text, col_width in (
-                    (sup,     _COLUMNS[1][1]),
-                    (plat,    _COLUMNS[2][1]),
-                    (pay_str, _COLUMNS[3][1]),
+                    (sup,      _COLUMNS[1][1]),
+                    (plat,     _COLUMNS[2][1]),
+                    (pay_str,  _COLUMNS[3][1]),
+                    (eff_date, _COLUMNS[4][1]),
                 ):
                     ctk.CTkLabel(
                         row, text=text,
@@ -369,7 +400,7 @@ class App(ctk.CTk):
                     fg_color=row_bg,
                     text_color=text_color,
                     anchor="w",
-                    width=_COLUMNS[4][1],
+                    width=_COLUMNS[5][1],
                 ).pack(side="left", padx=(8, 0), pady=2)
 
                 self._rows.append(_RowEntry(record, row, var, is_valid))
@@ -414,6 +445,16 @@ class App(ctk.CTk):
             record   = entry.record
             supplier = str(record.get(_COL_SUPPLIER, "")).strip()
             platform = str(record.get(_COL_PLATFORM, "")).strip()
+
+            # Double-check required fields (guard against race with refresh)
+            missing = _get_missing_fields(record)
+            if missing:
+                self.after(0, self._log_write,
+                           f"❌ {supplier} {platform}: Missing fields — {', '.join(missing)}\n")
+                fail += 1
+                self.after(0, self._progress.set, idx / total)
+                continue
+
             try:
                 out = self._writer.write(
                     record,
