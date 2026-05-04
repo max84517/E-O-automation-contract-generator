@@ -38,6 +38,10 @@ class _Tooltip:
         self._tip: tk.Toplevel | None = None
         widget.bind("<Enter>", self._show, add="+")
         widget.bind("<Leave>", self._hide, add="+")
+        # Also bind children so the tooltip stays visible inside composite widgets
+        for child in widget.winfo_children():
+            child.bind("<Enter>", self._show, add="+")
+            child.bind("<Leave>", self._hide, add="+")
 
     def _show(self, event: tk.Event) -> None:  # type: ignore[type-arg]
         if self._tip:
@@ -448,8 +452,6 @@ class App(ctk.CTk):
                     missing_names = _get_missing_fields(record)
                     tip_text = "Missing: " + ", ".join(missing_names)
                     _Tooltip(status_lbl, tip_text)
-                    for _child in status_lbl.winfo_children():
-                        _Tooltip(_child, tip_text)
 
                 self._rows.append(_RowEntry(record, row, var, is_valid))
 
