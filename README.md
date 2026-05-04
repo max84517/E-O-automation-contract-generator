@@ -89,6 +89,23 @@ The workbook must contain two sheets:
 > All 9 fields are **required**. Any missing value disables generation for that row.
 > The log panel shows exactly which fields are missing on failure.
 
+## Required Fields for Contract Generation
+
+All 9 fields below must be present for a row to be eligible for generation.
+Hovering over the **⚠ Missing data** status label in the UI shows which fields are missing.
+
+| Field | Source Sheet | Description |
+|-------|-------------|-------------|
+| GTK Supplier | Summary | Supplier code (merge key) |
+| Platform | Summary | Platform name |
+| Actual Payment | Summary | Settlement amount |
+| Effective Date | Summary | Contract effective date |
+| Sub-Category | Summary | Component category |
+| Supplier name | Info | Full legal supplier name |
+| Master Agreement | Info | Contract number |
+| Signer | Info | Signatory name |
+| Signer title | Info | Signatory title |
+
 ## GUI Overview
 
 - **Three row groups**: Pending (ready to generate) → Missing Data (incomplete) → Generated (already exists)

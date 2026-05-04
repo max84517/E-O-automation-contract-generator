@@ -28,6 +28,45 @@ from src.core.loader import InfoLoader
 from src.core.processor import DataProcessor
 from src.core.writer import WordWriter
 
+
+class _Tooltip:
+    """Simple hover tooltip for any tkinter widget."""
+
+    def __init__(self, widget: tk.Widget, text: str) -> None:
+        self._widget = widget
+        self._text   = text
+        self._tip: tk.Toplevel | None = None
+        widget.bind("<Enter>", self._show, add="+")
+        widget.bind("<Leave>", self._hide, add="+")
+
+    def _show(self, event: tk.Event) -> None:  # type: ignore[type-arg]
+        if self._tip:
+            return
+        x = self._widget.winfo_rootx() + 10
+        y = self._widget.winfo_rooty() + self._widget.winfo_height() + 4
+        self._tip = tk.Toplevel(self._widget)
+        self._tip.wm_overrideredirect(True)
+        self._tip.wm_geometry(f"+{x}+{y}")
+        lbl = tk.Label(
+            self._tip,
+            text=self._text,
+            background="#FFFACD",
+            foreground="#1A1A1A",
+            relief="solid",
+            borderwidth=1,
+            font=("Arial", 10),
+            justify="left",
+            wraplength=400,
+            padx=6,
+            pady=4,
+        )
+        lbl.pack()
+
+    def _hide(self, event: tk.Event) -> None:  # type: ignore[type-arg]
+        if self._tip:
+            self._tip.destroy()
+            self._tip = None
+
 # Must be called at module level before any CTk widget is instantiated.
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
@@ -394,14 +433,23 @@ class App(ctk.CTk):
                     ).pack(side="left", padx=(8, 0), pady=2)
 
                 icon = "✅" if is_done else ("⚠" if not is_valid else "⬜")
-                ctk.CTkLabel(
+                status_lbl = ctk.CTkLabel(
                     row, text=f"{icon} {status_txt}",
                     font=("Arial", 11),
                     fg_color=row_bg,
                     text_color=text_color,
                     anchor="w",
                     width=_COLUMNS[5][1],
-                ).pack(side="left", padx=(8, 0), pady=2)
+                )
+                status_lbl.pack(side="left", padx=(8, 0), pady=2)
+
+                # Tooltip showing missing fields on hover (Missing Data rows only)
+                if not is_valid and not is_done:
+                    missing_names = _get_missing_fields(record)
+                    tip_text = "Missing: " + ", ".join(missing_names)
+                    _Tooltip(status_lbl, tip_text)
+                    for _child in status_lbl.winfo_children():
+                        _Tooltip(_child, tip_text)
 
                 self._rows.append(_RowEntry(record, row, var, is_valid))
 
