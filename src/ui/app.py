@@ -360,6 +360,16 @@ class App(ctk.CTk):
             else:
                 pending.append(record)
 
+        # Sort each group by Supplier name then Platform (case-insensitive)
+        def _sort_key(r: dict) -> tuple[str, str]:
+            return (
+                str(r.get("Supplier name") or r.get(_COL_SUPPLIER, "")).strip().lower(),
+                str(r.get(_COL_PLATFORM, "")).strip().lower(),
+            )
+        pending.sort(key=_sort_key)
+        missing.sort(key=_sort_key)
+        done.sort(key=_sort_key)
+
         # ── Render groups ───────────────────────────────────────────────
         groups = [
             (f"⬜  Pending  ({len(pending)})",      pending,  _EVEN_A,     _ODD_A,     "Pending"),
