@@ -1,0 +1,5 @@
+pandas>=2.2
+openpyxl>=3.1
+python-docx>=1.1
+num2words>=0.5
+customtkinter>=5.2

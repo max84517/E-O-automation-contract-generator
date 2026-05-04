@@ -1,0 +1,25 @@
+[tool.poetry]
+name = "eo-contract-generator"
+version = "0.1.0"
+description = "E&O Settlement Contract Auto-Generator"
+authors = ["HP Inc."]
+readme = "README.md"
+packages = [{ include = "src" }]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+pandas = "^2.2"
+openpyxl = "^3.1"
+python-docx = "^1.1"
+num2words = "^0.5"
+customtkinter = "^5.2"
+
+[tool.poetry.group.dev.dependencies]
+pyinstaller = { version = "^6.0", python = ">=3.10,<3.15" }
+
+[tool.poetry.scripts]
+eo-generator = "src.main:main"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

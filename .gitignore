@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+
+# Poetry
+poetry.lock
+
+# PyInstaller
+dist/
+build/
+*.spec
+
+# Data & output (user-supplied, not tracked)
+data/*.xlsx
+output/*.docx
+
+# Temp debug scripts
+inspect_excel.py
+inspect2.py
+smoke_test.py
+check_loader.py
+check_scale.py
+
+# OS
+.DS_Store
+Thumbs.db
