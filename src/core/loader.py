@@ -34,7 +34,13 @@ class InfoLoader:
 
     def load(self) -> "InfoLoader":
         """Read both sheets; return *self* for chaining."""
-        xl = pd.ExcelFile(self.excel_path, engine="openpyxl")
+        # data_only=True tells openpyxl to return cached formula results
+        # instead of the raw formula strings (e.g. =B2*0.15 → 5270.50).
+        xl = pd.ExcelFile(
+            self.excel_path,
+            engine="openpyxl",
+            engine_kwargs={"data_only": True},
+        )
         self._summary = pd.read_excel(xl, sheet_name=self.SHEET_SUMMARY)
 
         raw_info = pd.read_excel(xl, sheet_name=self.SHEET_INFO)

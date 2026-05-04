@@ -23,6 +23,7 @@ class DataProcessor:
         "Effective Date",
         "Signer",
         "Signer title",
+        "Address",
     ]
 
     def __init__(self, summary: pd.DataFrame, info: pd.DataFrame) -> None:
@@ -47,60 +48,65 @@ class DataProcessor:
         # Include Info.GBU temporarily for the split; remove it from final output.
         extra = ["GBU"] if "GBU" in self.info.columns else []
         info_work = self.info[keep_cols + extra].copy()
+        # Normalised key for case-insensitive supplier matching
+        info_work["_supp_norm"] = info_work["Supplier"].str.strip().str.lower()
 
         # ── Suppliers that have GBU-differentiated rows in Info ─────────
         if extra:
             info_has_gbu = info_work[info_work["GBU"].notna()].copy()
-            specific_suppliers: set[str] = set(info_has_gbu["Supplier"].unique())
+            specific_suppliers_norm: set[str] = set(info_has_gbu["_supp_norm"].unique())
         else:
             info_has_gbu = pd.DataFrame()
-            specific_suppliers = set()
+            specific_suppliers_norm = set()
 
         # ── All other suppliers: one Info row per Supplier ───────────────
         info_nogbu = (
-            info_work[info_work["GBU"].isna()][keep_cols]
+            info_work[info_work["GBU"].isna()][keep_cols + ["_supp_norm"]]
             if extra
-            else info_work[keep_cols].copy()
+            else info_work[keep_cols + ["_supp_norm"]].copy()
         )
-        info_nogbu = info_nogbu.drop_duplicates(subset=["Supplier"], keep="first")
+        info_nogbu = info_nogbu.drop_duplicates(subset=["_supp_norm"], keep="first")
 
         # Normalize Summary GBU → last 2 chars upper (cNB→NB, bDT→DT)
+        # Also normalize GTK Supplier for case-insensitive join
         summary_work = self.summary.copy()
         summary_work["_gbu_norm"] = (
             summary_work["GBU"].astype(str).str.strip().str[-2:].str.upper()
+        )
+        summary_work["_supp_norm"] = (
+            summary_work["GTK Supplier"].str.strip().str.lower()
         )
 
         results = []
 
         # ── Group 1: GBU-specific suppliers (e.g. Chicony) ──────────────
-        if specific_suppliers:
+        if specific_suppliers_norm:
             s_specific = summary_work[
-                summary_work["GTK Supplier"].isin(specific_suppliers)
+                summary_work["_supp_norm"].isin(specific_suppliers_norm)
             ].copy()
             m1 = pd.merge(
                 s_specific,
                 info_has_gbu.rename(columns={"GBU": "_info_gbu"}),
-                left_on=["GTK Supplier", "_gbu_norm"],
-                right_on=["Supplier", "_info_gbu"],
+                left_on=["_supp_norm", "_gbu_norm"],
+                right_on=["_supp_norm", "_info_gbu"],
                 how="left",
             ).drop(columns=["_info_gbu"], errors="ignore")
             results.append(m1)
 
         # ── Group 2: all other suppliers ────────────────────────────────
         s_others = summary_work[
-            ~summary_work["GTK Supplier"].isin(specific_suppliers)
+            ~summary_work["_supp_norm"].isin(specific_suppliers_norm)
         ]
         m2 = pd.merge(
             s_others,
             info_nogbu,
-            left_on=["GTK Supplier"],
-            right_on=["Supplier"],
+            on=["_supp_norm"],
             how="left",
         )
         results.append(m2)
 
         self._merged = pd.concat(results, ignore_index=True).drop(
-            columns=["_gbu_norm"], errors="ignore"
+            columns=["_gbu_norm", "_supp_norm"], errors="ignore"
         )
         return self
 
